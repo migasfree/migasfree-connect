@@ -39,19 +39,27 @@ migasfree-connect [USER] [OPTIONS]
 
 ### Examples
 
-**SSH to a specific Agent:**
+**SSH Connection:**
+Connect to an agent via SSH.
 ```bash
-migasfree-connect root --type ssh --agent CID-123 --manager https://inv.org
+migasfree-connect -t ssh -a CID-4 -m https://<FQDN> root
+```
+
+**Execute Remote Command (SSH):**
+```bash
+migasfree-connect -t ssh -a CID-4 -m https://<FQDN> root -c "ls -la"
 ```
 
 **VNC Connection:**
+Connect to the remote graphical desktop via VNC.
 ```bash
-migasfree-connect --type vnc --agent CID-123 --manager https://inv.org
+migasfree-connect -t vnc -a CID-4 -m https://<FQDN>
 ```
 
 **RDP Connection:**
+Connect via Remote Desktop Protocol (Windows).
 ```bash
-migasfree-connect root --type rdp --agent CID-123 --manager https://inv.org
+migasfree-connect -t rdp -a CID-4 -m https://<FQDN> tux
 ```
 
 ### Options
