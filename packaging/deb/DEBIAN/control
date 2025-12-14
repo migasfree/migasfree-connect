@@ -1,0 +1,9 @@
+Package: migasfree-connect
+Version: 1.0-1
+Section: utils
+Priority: optional
+Architecture: all
+Depends: python3, python3-websockets, python3-requests
+Maintainer: Alberto Gacias <alberto@migasfree.org>
+Description: Client for migasfree remote tunnel sessions
+ Client script for establishing remote sessions (SSH, VNC, RDP) via migasfree tunnel infrastructure.
