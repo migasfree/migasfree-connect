@@ -1,61 +1,46 @@
 #!/bin/bash
 set -e
 
-# Configuration
-VERSION="1.0"
-RELEASE="1"
-ARCH="noarch"
-PKG_NAME="migasfree-connect"
+PROJECT_ROOT=$(pwd)
+VERSION=${1:-"1.0.0"}
+DEB_DIR="packaging/deb"
+RPM_DIR="packaging/rpm"
+DIST_DIR="dist"
 
-# Clean
-rm -rf dist build
-mkdir -p dist build
+echo "Building version $VERSION..."
+mkdir -p $DIST_DIR
 
-# --- Build DEB ---
-echo "Building DEB packet..."
-DEB_STAGE="build/deb_stage"
-mkdir -p "$DEB_STAGE/usr/bin"
-mkdir -p "$DEB_STAGE/DEBIAN"
+# Update Debian Control File Version
+sed -i "s/^Version: .*/Version: $VERSION/" $DEB_DIR/DEBIAN/control
 
-# Copy control files
-cp -r packaging/deb/DEBIAN/* "$DEB_STAGE/DEBIAN/"
+# --- BUILD DEB ---
+echo "--- Building DEB Package ---"
+# Copy files to structure
+mkdir -p $DEB_DIR/usr/bin
+cp connect/migasfree-connect $DEB_DIR/usr/bin/migasfree-connect
+chmod 755 $DEB_DIR/usr/bin/migasfree-connect
 
-# Copy binary
-cp connect/migasfree-connect "$DEB_STAGE/usr/bin/"
-chmod 755 "$DEB_STAGE/usr/bin/migasfree-connect"
+# Build
+dpkg-deb --build $DEB_DIR $DIST_DIR
 
-# Build package
-dpkg-deb --build "$DEB_STAGE" "dist/${PKG_NAME}_${VERSION}-${RELEASE}_all.deb"
-
-
-# --- Build RPM ---
-echo "Building RPM packet..."
-RPM_ROOT="packaging/rpm"
-# Ensure clean rpm build structure in build dir if desired, but for now we use the one in packaging as source
-# ideally we should copy to build/rpm to avoid artifacts in packaging/rpm/RPMS etc if we want to be super clean
-# checking previous implementation, it used packaging/rpm as root.
-# Let's clean up packaging/rpm artifacts if they exist from previous runs to be safe or ignore them.
-# The user prompt implies keeping source tree clean.
-mkdir -p "$RPM_ROOT"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-
-# Create source tarball
-TAR_NAME="${PKG_NAME}-${VERSION}"
-mkdir -p "/tmp/$TAR_NAME/$PKG_NAME"
-# Improved copy to flattened structure for tarball if needed, but current structure is fine
-cp connect/migasfree-connect "/tmp/$TAR_NAME/$PKG_NAME/"
-tar czf "$RPM_ROOT/SOURCES/$TAR_NAME.tar.gz" -C /tmp "$TAR_NAME"
-rm -rf "/tmp/$TAR_NAME"
-
-# Build RPM
+# --- BUILD RPM ---
+echo "--- Building RPM Package ---"
 # Check if rpmbuild exists
-if command -v rpmbuild &> /dev/null; then
-    rpmbuild --define "_topdir $(pwd)/$RPM_ROOT" -ba "$RPM_ROOT/SPECS/migasfree-connect.spec"
+if command -v rpmbuild >/dev/null 2>&1; then
+    # Create structure
+    mkdir -p $RPM_DIR/{SOURCES,BUILD,RPMS,SRPMS}
+
+    # Copy sources
+    cp connect/migasfree-connect $RPM_DIR/SOURCES/migasfree-connect
     
-    # Move RPMs to dist
-    find "$RPM_ROOT/RPMS" -name "*.rpm" -exec cp {} dist/ \;
-    find "$RPM_ROOT/SRPMS" -name "*.rpm" -exec cp {} dist/ \;
+    # Build
+    rpmbuild --define "_topdir $PROJECT_ROOT/$RPM_DIR" --define "version $VERSION" -bb $RPM_DIR/SPECS/migasfree-connect.spec
+    
+    # Copy to dist
+    cp $RPM_DIR/RPMS/noarch/*.rpm $DIST_DIR/
 else
     echo "rpmbuild not found. Skipping RPM build."
 fi
 
-echo "Build complete. Packages are in dist/"
+echo "✅ Build complete. Packages in $DIST_DIR/"
+ls -l $DIST_DIR/
