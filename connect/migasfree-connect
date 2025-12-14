@@ -50,7 +50,7 @@ def check_credentials(manager_url):
         fqdn = "localhost"
 
     home = Path.home()
-    cert_dir = home / ".migasfree-tunnel" / fqdn
+    cert_dir = home / ".migasfree-connect" / fqdn
     cert_dir.mkdir(parents=True, exist_ok=True)
 
     cert_file = cert_dir / "cert.pem"
@@ -540,12 +540,10 @@ async def main_async():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s root                              # SSH as root
-  %(prog)s user -a abc-123                   # SSH to specific agent
-  %(prog)s root -c "ls -la"                  # Execute remote SSH command
-  %(prog)s -t vnc                            # Connect VNC
-  %(prog)s -t rdp -u administrator           # Connect RDP
-  %(prog)s -t ssh user -m http://localhost:8000  # Custom Manager
+  %(prog)s -t ssh -a CID-4 -m https://<FQDN> root  # SSH to agent
+  %(prog)s -t ssh -a CID-4 -m https://<FQDN> root -c "ls -la"  # Execute remote SSH command
+  %(prog)s -t vnc -a CID-4 -m https://<FQDN>  # Connect VNC
+  %(prog)s -t rdp -a CID-4 -m https://<FQDN> tux  # Connect RDP
         """
     )
 
