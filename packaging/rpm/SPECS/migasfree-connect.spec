@@ -1,5 +1,5 @@
 Name:           migasfree-connect
-Version:        1.0
+Version:        %{version}
 Release:        1%{?dist}
 Summary:        Client for migasfree remote tunnel sessions
 
@@ -24,7 +24,7 @@ Client script for establishing remote sessions (SSH, VNC, RDP) via migasfree tun
 %install
 rm -rf $RPM_BUILD_ROOT
 install -d $RPM_BUILD_ROOT%{_bindir}
-install -m 0755 migasfree-connect/migasfree-connect $RPM_BUILD_ROOT%{_bindir}/%{name}
+install -m 0755 migasfree-connect $RPM_BUILD_ROOT%{_bindir}/%{name}
 
 %files
 %{_bindir}/%{name}
