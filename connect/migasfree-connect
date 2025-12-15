@@ -16,6 +16,14 @@ import uuid
 
 from urllib.parse import urlparse
 
+try:
+    from migasfree_client import settings
+    from migasfree_client.utils import get_config   
+    FQDN = get_config(settings.CONF_FILE, 'client').get('server', '')
+except:
+    FQDN = ''
+
+
 def extract_cn_from_cert(cert_path):
     """Extracts the Common Name (CN) from the certificate"""
     if not cert_path or not os.path.exists(cert_path):
@@ -45,9 +53,14 @@ def check_credentials(manager_url):
     # Extract FQDN from manager_url for per-server storage
     try:
         parsed = urlparse(manager_url)
-        fqdn = parsed.hostname or "localhost"
+        fqdn = parsed.hostname or ""
     except:
-        fqdn = "localhost"
+        fqdn = ""
+
+    if manager_url == "https://":
+        print("❌ Invalid Manager URL. Please provide a valid URL.")
+        print("   Example: migasfree-connect -a CID-4 -t ssh -m https://<FQDN> <user>")
+        sys.exit(1) 
 
     home = Path.home()
     cert_dir = home / ".migasfree-connect" / fqdn
@@ -143,7 +156,7 @@ class MultiProtocolTunnel:
 
     async def select_agent(self):
         """Selects an agent from the manager"""
-        print(f"📋 Querying Manager at {self.manager_url}...")
+        print(f"📋 Querying Manager at {self.manager_url}")
         try:
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -551,7 +564,7 @@ Examples:
     parser.add_argument('-t', '--type', default='ssh', choices=['ssh', 'vnc', 'rdp'],
                        help='Service type (ssh, vnc, rdp)')
     parser.add_argument('-a', '--agent', help='Agent ID (or part of ID)')
-    parser.add_argument('-m', '--manager', default='http://inv.org', help='Manager API URL')
+    parser.add_argument('-m', '--manager', default=f'https://{FQDN}', help='Manager API URL')
     parser.add_argument('-p', '--port', type=int, default=0,
                        help='Local port for tunnel (0 = automatic)')
     parser.add_argument('-c', '--command', help='Command to execute remotely (SSH only)')
