@@ -6,7 +6,7 @@ This client establishes secure WebSocket connections to relay servers,
 enabling remote access to migasfree agents through mTLS authentication.
 """
 
-from __future__ import annotations
+# from __future__ import annotations # Removed for Python 3.6 compatibility
 
 import asyncio
 import getpass
@@ -20,7 +20,7 @@ import sys
 import uuid
 from contextlib import suppress
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 import requests
@@ -31,6 +31,7 @@ import websockets
 try:
     from migasfree_client import settings
     from migasfree_client.utils import get_config
+
     FQDN = get_config(settings.CONF_FILE, 'client').get('server', '')
 except ImportError:
     FQDN = ''
@@ -63,7 +64,13 @@ def extract_cn_from_cert(cert_path: str) -> Optional[str]:
         return None
     try:
         cmd = ['openssl', 'x509', '-in', cert_path, '-noout', '-subject']
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(  # noqa
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding='utf-8',
+            check=True,
+        )
         subject = result.stdout.strip()
 
         match = re.search(r'CN\s*=\s*([^/,]+)', subject)
@@ -115,27 +122,54 @@ def check_credentials(manager_url: str) -> Tuple[Optional[str], Optional[str], O
     print('⚙️ Extracting certificates...')
 
     cmd_cert = [
-        'openssl', 'pkcs12', '-in', str(p12_file),
-        '-clcerts', '-nokeys', '-out', str(cert_file),
-        '-passin', f'pass:{password}'
+        'openssl',
+        'pkcs12',
+        '-in',
+        str(p12_file),
+        '-clcerts',
+        '-nokeys',
+        '-out',
+        str(cert_file),
+        '-passin',
+        f'pass:{password}',
     ]
 
     cmd_key = [
-        'openssl', 'pkcs12', '-in', str(p12_file),
-        '-nocerts', '-out', str(key_file), '-nodes',
-        '-passin', f'pass:{password}'
+        'openssl',
+        'pkcs12',
+        '-in',
+        str(p12_file),
+        '-nocerts',
+        '-out',
+        str(key_file),
+        '-nodes',
+        '-passin',
+        f'pass:{password}',
     ]
 
     cmd_ca = [
-        'openssl', 'pkcs12', '-in', str(p12_file),
-        '-cacerts', '-nokeys', '-out', str(ca_file),
-        '-passin', f'pass:{password}'
+        'openssl',
+        'pkcs12',
+        '-in',
+        str(p12_file),
+        '-cacerts',
+        '-nokeys',
+        '-out',
+        str(ca_file),
+        '-passin',
+        f'pass:{password}',
     ]
 
     try:
-        subprocess.run(cmd_cert, check=True, capture_output=True)
-        subprocess.run(cmd_key, check=True, capture_output=True)
-        subprocess.run(cmd_ca, check=False, capture_output=True)
+        subprocess.run(  # noqa
+            cmd_cert, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        subprocess.run(  # noqa
+            cmd_key, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        subprocess.run(  # noqa
+            cmd_ca, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
 
         print(f'✅ Credentials extracted to {cert_dir}')
         ca_result = str(ca_file) if ca_file.exists() and ca_file.stat().st_size > 0 else None
@@ -144,6 +178,7 @@ def check_credentials(manager_url: str) -> Tuple[Optional[str], Optional[str], O
     except subprocess.CalledProcessError as e:
         print(f'❌ Error extracting certificates. Wrong password?\n{e}')
         sys.exit(1)
+
 
 class MultiProtocolTunnel:
     """
@@ -173,11 +208,11 @@ class MultiProtocolTunnel:
         self.server: Optional[asyncio.AbstractServer] = None
         self.client_process: Optional[subprocess.Popen] = None
         self.active = False
-        self.selected_agent: Optional[Dict] = None
+        self.selected_agent: Optional[dict] = None
         self.relay_url: Optional[str] = None
 
         # Active connections tracking
-        self.active_connections: Dict[str, Dict] = {}
+        self.active_connections: Dict[str, dict] = {}
 
         # mTLS Credentials
         self.cert = msg_cert
@@ -189,23 +224,34 @@ class MultiProtocolTunnel:
     def _find_free_port() -> int:
         """Finds a free port automatically."""
         import socket
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(('', 0))
             s.listen(1)
             return s.getsockname()[1]
 
-    async def select_agent(self) -> Optional[Dict]:
+    def _get_agents_request(self, verify: Union[str, bool], cert: Optional[Tuple[str, str]]) -> requests.Response:
+        """Performs the synchronous request to get agents."""
+        return requests.get(
+            f'{self.manager_url}/manager/v1/private/tunnel/agents',
+            timeout=CONNECTION_TIMEOUT,
+            verify=verify,
+            cert=cert,
+        )
+
+    async def select_agent(self) -> Optional[dict]:
         """Selects an agent from the manager."""
         print(f'📋 Querying Manager at {self.manager_url}')
         try:
             verify_param = self.ca if self.ca else False
             cert_param = (self.cert, self.key) if self.cert and self.key else None
 
-            resp = requests.get(
-                f'{self.manager_url}/manager/v1/private/tunnel/agents',
-                timeout=CONNECTION_TIMEOUT,
-                verify=verify_param,
-                cert=cert_param,
+            loop = asyncio.get_event_loop()
+            resp = await loop.run_in_executor(
+                None,
+                self._get_agents_request,
+                verify_param,
+                cert_param,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -281,7 +327,8 @@ class MultiProtocolTunnel:
             # Configure SSL context for wss://
             if self.relay_url.startswith('wss://'):
                 if self.ca:
-                    ssl_context = ssl.create_default_context(cafile=self.ca)
+                    ssl_context = ssl.create_default_context()
+                    ssl_context.load_verify_locations(cafile=self.ca)
                 else:
                     ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
                     ssl_context.check_hostname = False
@@ -291,38 +338,33 @@ class MultiProtocolTunnel:
                     ssl_context.load_cert_chain(certfile=self.cert, keyfile=self.key)
 
                 connect_kwargs['ssl'] = ssl_context
-            
+
             # Try to connect with headers - handle different websockets versions
             if extra_headers:
                 try:
                     # Try extra_headers first (older versions)
                     connect_kwargs['extra_headers'] = extra_headers
-                    ws = await asyncio.wait_for(
-                        websockets.connect(self.relay_url, **connect_kwargs),
-                        timeout=5
-                    )
+                    ws = await asyncio.wait_for(websockets.connect(self.relay_url, **connect_kwargs), timeout=5)
                 except TypeError as e:
                     if 'extra_headers' in str(e):
                         # Fallback to additional_headers (newer versions)
                         del connect_kwargs['extra_headers']
                         connect_kwargs['additional_headers'] = extra_headers
-                        ws = await asyncio.wait_for(
-                            websockets.connect(self.relay_url, **connect_kwargs),
-                            timeout=5
-                        )
+                        ws = await asyncio.wait_for(websockets.connect(self.relay_url, **connect_kwargs), timeout=5)
                     else:
                         raise
             else:
-                ws = await asyncio.wait_for(
-                    websockets.connect(self.relay_url, **connect_kwargs),
-                    timeout=5
-                )
+                ws = await asyncio.wait_for(websockets.connect(self.relay_url, **connect_kwargs), timeout=5)
 
             # Identify as tunnel client
-            await ws.send(json.dumps({
-                'type': 'connect_client',
-                'mode': 'tcp_tunnel',
-            }))
+            await ws.send(
+                json.dumps(
+                    {
+                        'type': 'connect_client',
+                        'mode': 'tcp_tunnel',
+                    }
+                )
+            )
             await ws.recv()
 
             if not self.selected_agent:
@@ -334,13 +376,17 @@ class MultiProtocolTunnel:
             agent_id = self.selected_agent['agent_id']
 
             # Request TCP tunnel with specified service
-            await ws.send(json.dumps({
-                'type': 'start_tcp_tunnel',
-                'agent_id': agent_id,
-                'tunnel_id': tunnel_id,
-                'service': self.service,
-                'client_cn': self.client_cn
-            }))
+            await ws.send(
+                json.dumps(
+                    {
+                        'type': 'start_tcp_tunnel',
+                        'agent_id': agent_id,
+                        'tunnel_id': tunnel_id,
+                        'service': self.service,
+                        'client_cn': self.client_cn,
+                    }
+                )
+            )
 
             resp = await asyncio.wait_for(ws.recv(), timeout=10)
             resp_data = json.loads(resp)
@@ -358,14 +404,18 @@ class MultiProtocolTunnel:
                         data = await reader.read(BUFFER_SIZE)
                         if not data:
                             break
-                        await ws.send(json.dumps({
-                            'type': 'tunnel_data',
-                            'tunnel_id': tunnel_id,
-                            'data': data.hex(),
-                        }))
+                        await ws.send(
+                            json.dumps(
+                                {
+                                    'type': 'tunnel_data',
+                                    'tunnel_id': tunnel_id,
+                                    'data': data.hex(),
+                                }
+                            )
+                        )
                 except asyncio.CancelledError:
                     pass
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
 
             async def ws_to_tcp():
@@ -393,32 +443,25 @@ class MultiProtocolTunnel:
             # Create tasks and register connection
             task_tcp = asyncio.ensure_future(tcp_to_ws())
             task_ws = asyncio.ensure_future(ws_to_tcp())
-            
-            self.active_connections[tunnel_id] = {
-                'ws': ws,
-                'writer': writer,
-                'tasks': [task_tcp, task_ws]
-            }
+
+            self.active_connections[tunnel_id] = {'ws': ws, 'writer': writer, 'tasks': [task_tcp, task_ws]}
 
             await asyncio.gather(task_tcp, task_ws, return_exceptions=True)
 
         except asyncio.CancelledError:
             pass
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             if self.active:
                 print(f'❌ Error in tunnel: {e}')
         finally:
             # Remove from active connections
             self.active_connections.pop(tunnel_id, None)
-            
+
             # Close WebSocket
             if ws is not None:
                 try:
                     if hasattr(ws, 'open') and ws.open:
-                        await ws.send(json.dumps({
-                            'type': 'close_tunnel',
-                            'tunnel_id': tunnel_id
-                        }))
+                        await ws.send(json.dumps({'type': 'close_tunnel', 'tunnel_id': tunnel_id}))
                     await ws.close()
                 except Exception:
                     pass
@@ -445,7 +488,7 @@ class MultiProtocolTunnel:
         self.active = False
 
         # Close all active connections
-        for tunnel_id, conn in list(self.active_connections.items()):
+        for _, conn in list(self.active_connections.items()):
             for task in conn.get('tasks', []):
                 if not task.done():
                     task.cancel()
@@ -479,15 +522,24 @@ class MultiProtocolTunnel:
 
             cmd = [
                 'ssh',
-                '-p', str(self.local_port),
-                '-o', 'StrictHostKeyChecking=no',
-                '-o', 'UserKnownHostsFile=/dev/null',
-                '-o', 'LogLevel=ERROR',
-                '-o', 'ServerAliveInterval=30',
-                '-o', 'ServerAliveCountMax=3',
-                '-o', 'TCPKeepAlive=yes',
-                '-o', 'NoHostAuthenticationForLocalhost=yes',
-                '-o', 'CheckHostIP=no',
+                '-p',
+                str(self.local_port),
+                '-o',
+                'StrictHostKeyChecking=no',
+                '-o',
+                'UserKnownHostsFile=/dev/null',
+                '-o',
+                'LogLevel=ERROR',
+                '-o',
+                'ServerAliveInterval=30',
+                '-o',
+                'ServerAliveCountMax=3',
+                '-o',
+                'TCPKeepAlive=yes',
+                '-o',
+                'NoHostAuthenticationForLocalhost=yes',
+                '-o',
+                'CheckHostIP=no',
                 f'{self.user}@127.0.0.1',
             ]
             if extra_command:
@@ -519,6 +571,7 @@ class MultiProtocolTunnel:
             print('   Press Ctrl+C to close...')
             try:
                 import time
+
                 while True:
                     time.sleep(1)
             except KeyboardInterrupt:
@@ -593,9 +646,10 @@ class MultiProtocolTunnel:
 
             return exit_code
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f'❌ Error: {e}')
             import traceback
+
             traceback.print_exc()
             return 1
         finally:
@@ -610,22 +664,22 @@ async def main_async() -> int:
     parser = argparse.ArgumentParser(
         description='Multi-Protocol Client over WebSocket (SSH, VNC, RDP)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='''
+        epilog="""
 Examples:
   %(prog)s -t ssh -a CID-4 -m https://<FQDN> root  # SSH to agent
   %(prog)s -t ssh -a CID-4 -m https://<FQDN> root -c "ls -la"  # Execute remote command
   %(prog)s -t vnc -a CID-4 -m https://<FQDN>  # Connect VNC
   %(prog)s -t rdp -a CID-4 -m https://<FQDN> tux  # Connect RDP
-        ''',
+        """,
     )
 
     parser.add_argument('user', nargs='?', help='User for SSH/RDP (optional for VNC)')
-    parser.add_argument('-t', '--type', default='ssh', choices=['ssh', 'vnc', 'rdp'],
-                        help='Service type (ssh, vnc, rdp)')
+    parser.add_argument(
+        '-t', '--type', default='ssh', choices=['ssh', 'vnc', 'rdp'], help='Service type (ssh, vnc, rdp)'
+    )
     parser.add_argument('-a', '--agent', help='Agent ID (or part of ID)')
     parser.add_argument('-m', '--manager', default=f'https://{FQDN}', help='Manager API URL')
-    parser.add_argument('-p', '--port', type=int, default=0,
-                        help='Local port for tunnel (0 = automatic)')
+    parser.add_argument('-p', '--port', type=int, default=0, help='Local port for tunnel (0 = automatic)')
     parser.add_argument('-c', '--command', help='Command to execute remotely (SSH only)')
 
     args = parser.parse_args()
@@ -655,7 +709,8 @@ Examples:
 def main() -> None:
     """Main entry point."""
     try:
-        exit_code = asyncio.run(main_async())
+        loop = asyncio.get_event_loop()
+        exit_code = loop.run_until_complete(main_async())
         sys.exit(exit_code)
     except KeyboardInterrupt:
         print('\n\n✅ Cancelled by user')
