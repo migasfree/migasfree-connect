@@ -84,7 +84,9 @@ def extract_cn_from_cert(cert_path: str) -> Optional[str]:
         return None
 
 
-def check_credentials(manager_url: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+def check_credentials(
+    manager_url: str,
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """Checks for mTLS credentials or extracts them from a .p12 file."""
     try:
         parsed = urlparse(manager_url)
@@ -266,26 +268,28 @@ class MultiProtocolTunnel:
 
         # If an agent was specified, search for it immediately
         if self.target_agent_id:
+            # Normalize target: strip CID- if present
+            target = self.target_agent_id.replace('CID-', '')
             for agent in agents:
-                if self.target_agent_id in agent['agent_id']:
-                    print(f'\n✅ Agent selected: {agent["hostname"]}')
+                agent_id = str(agent['id'])
+                # Compare as strings
+                if target == agent_id or self.target_agent_id == agent_id:
+                    print(f'\n✅ Agent selected: {agent["name"]}')
                     return agent
             print(f'❌ Agent {self.target_agent_id} not found in current list')
             return None
 
         print(f'\n📊 Available Agents ({len(agents)}):')
         for idx, agent in enumerate(agents, 1):
-            info = agent.get('info', {})
-            services = info.get('available_services', [])
+            services = agent.get('services', [])
             services_str = f' [{", ".join(services)}]' if services else ''
-            print(f'   [{idx}] {agent["hostname"]}{services_str}')
-            print(f'       ID: {agent["agent_id"][:24]}...')
-            print(f'       OS: {info.get("system", "N/A")} {info.get("architecture", "")}')
+            print(f'   [{idx}] {agent["name"]}{services_str}')
+            print(f'       ID: {agent["id"][:24]}...')
 
         # If there is only one agent, use it automatically
         if len(agents) == 1:
             agent = agents[0]
-            print(f'\n✅ Using: {agent["hostname"]}')
+            print(f'\n✅ Using: {agent["name"]}')
             return agent
 
         # Multiple agents: ask for selection
@@ -295,7 +299,7 @@ class MultiProtocolTunnel:
                 idx = int(selection) - 1
                 if 0 <= idx < len(agents):
                     agent = agents[idx]
-                    print(f'✅ Selected: {agent["hostname"]}')
+                    print(f'✅ Selected: {agent["name"]}')
                     return agent
                 print('❌ Invalid number')
             except ValueError:
@@ -315,10 +319,11 @@ class MultiProtocolTunnel:
             # Prepare headers for HAProxy sticky sessions
             extra_headers: Dict[str, str] = {}
             if self.selected_agent:
-                extra_headers['X-Agent-ID'] = self.selected_agent['agent_id']
+                extra_headers['X-Agent-ID'] = self.selected_agent['id']
                 if 'server_ip' in self.selected_agent:
                     extra_headers['X-Server-IP'] = self.selected_agent['server_ip']
 
+            # Use self.relay_url (already set correctly)
             print(f'🔌 Connecting to Relay: {self.relay_url}')
 
             # Prepare connection kwargs
@@ -350,7 +355,10 @@ class MultiProtocolTunnel:
                         # Fallback to additional_headers (newer versions)
                         del connect_kwargs['extra_headers']
                         connect_kwargs['additional_headers'] = extra_headers
-                        ws = await asyncio.wait_for(websockets.connect(self.relay_url, **connect_kwargs), timeout=5)
+                        ws = await asyncio.wait_for(
+                            websockets.connect(self.relay_url, **connect_kwargs),
+                            timeout=5,
+                        )
                     else:
                         raise
             else:
@@ -373,14 +381,14 @@ class MultiProtocolTunnel:
                 await writer.wait_closed()
                 return
 
-            agent_id = self.selected_agent['agent_id']
+            agent_id = self.selected_agent['id']
 
             # Request TCP tunnel with specified service
             await ws.send(
                 json.dumps(
                     {
                         'type': 'start_tcp_tunnel',
-                        'agent_id': agent_id,
+                        'id': agent_id,
                         'tunnel_id': tunnel_id,
                         'service': self.service,
                         'client_cn': self.client_cn,
@@ -444,7 +452,11 @@ class MultiProtocolTunnel:
             task_tcp = asyncio.ensure_future(tcp_to_ws())
             task_ws = asyncio.ensure_future(ws_to_tcp())
 
-            self.active_connections[tunnel_id] = {'ws': ws, 'writer': writer, 'tasks': [task_tcp, task_ws]}
+            self.active_connections[tunnel_id] = {
+                'ws': ws,
+                'writer': writer,
+                'tasks': [task_tcp, task_ws],
+            }
 
             await asyncio.gather(task_tcp, task_ws, return_exceptions=True)
 
@@ -560,7 +572,13 @@ class MultiProtocolTunnel:
                 cmd = ['mstsc', f'/v:localhost:{self.local_port}']
             else:
                 # Linux: xfreerdp
-                cmd = ['xfreerdp', f'/v:localhost:{self.local_port}', '/cert-ignore', '/clipboard', '/sound']
+                cmd = [
+                    'xfreerdp',
+                    f'/v:localhost:{self.local_port}',
+                    '/cert-ignore',
+                    '/clipboard',
+                    '/sound',
+                ]
                 if self.user:
                     cmd.append(f'/u:{self.user}')
             print('\n🖥️  Connecting RDP...')
@@ -619,10 +637,10 @@ class MultiProtocolTunnel:
             if not agent:
                 return 1
 
-            self.target_agent_id = agent['agent_id']
+            self.target_agent_id = agent['id']
             self.selected_agent = agent
 
-            self.relay_url = agent.get('relay_url') or agent.get('server_url')
+            self.relay_url = agent.get('relay')
             if not self.relay_url:
                 print('❌ Agent has no registered Relay URL')
                 return 1
@@ -666,20 +684,30 @@ async def main_async() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s -t ssh -a CID-4 -m https://<FQDN> root  # SSH to agent
-  %(prog)s -t ssh -a CID-4 -m https://<FQDN> root -c "ls -la"  # Execute remote command
-  %(prog)s -t vnc -a CID-4 -m https://<FQDN>  # Connect VNC
-  %(prog)s -t rdp -a CID-4 -m https://<FQDN> tux  # Connect RDP
+  %(prog)s -t ssh -a 4 -m https://<FQDN> root  # SSH to agent
+  %(prog)s -t ssh -a 4 -m https://<FQDN> root -c "ls -la"  # Execute remote command
+  %(prog)s -t vnc -a 4 -m https://<FQDN>  # Connect VNC
+  %(prog)s -t rdp -a 4 -m https://<FQDN> tux  # Connect RDP
         """,
     )
 
     parser.add_argument('user', nargs='?', help='User for SSH/RDP (optional for VNC)')
     parser.add_argument(
-        '-t', '--type', default='ssh', choices=['ssh', 'vnc', 'rdp'], help='Service type (ssh, vnc, rdp)'
+        '-t',
+        '--type',
+        default='ssh',
+        choices=['ssh', 'vnc', 'rdp'],
+        help='Service type (ssh, vnc, rdp)',
     )
-    parser.add_argument('-a', '--agent', help='Agent ID (or part of ID)')
+    parser.add_argument('-a', '--agent', help='Agent ID (CID)')
     parser.add_argument('-m', '--manager', default=f'https://{FQDN}', help='Manager API URL')
-    parser.add_argument('-p', '--port', type=int, default=0, help='Local port for tunnel (0 = automatic)')
+    parser.add_argument(
+        '-p',
+        '--port',
+        type=int,
+        default=0,
+        help='Local port for tunnel (0 = automatic)',
+    )
     parser.add_argument('-c', '--command', help='Command to execute remotely (SSH only)')
 
     args = parser.parse_args()
