@@ -626,6 +626,137 @@ class MultiProtocolTunnel:
                     print('   👉 Install: sudo apt install freerdp2-x11')
             return 1
 
+    async def execute_remote_command(self, command: str) -> int:
+        """Executes a command on the remote agent and displays output."""
+        print('=' * 70)
+        print('🔧 Remote Command Execution')
+        print('=' * 70)
+
+        try:
+            agent = await self.select_agent()
+            if not agent:
+                return 1
+
+            self.target_agent_id = agent['id']
+            self.selected_agent = agent
+
+            self.relay_url = agent.get('relay')
+            if not self.relay_url:
+                print('❌ Agent has no registered Relay URL')
+                return 1
+
+            agent_id = agent['id']
+            exec_id = f'exec-{uuid.uuid4()}'
+
+            print(f'✅ Target: {agent["name"]}')
+            print(f'✅ Command: {command}')
+            print(f'✅ Route: Client -> {self.relay_url} -> Agent')
+            print()
+
+            # Prepare connection kwargs
+            connect_kwargs = WEBSOCKET_CONFIG.copy()
+
+            # Configure SSL context for wss://
+            if self.relay_url.startswith('wss://'):
+                if self.ca:
+                    ssl_context = ssl.create_default_context()
+                    ssl_context.load_verify_locations(cafile=self.ca)
+                else:
+                    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                    ssl_context.check_hostname = False
+                    ssl_context.verify_mode = ssl.CERT_NONE
+
+                if self.cert and self.key:
+                    ssl_context.load_cert_chain(certfile=self.cert, keyfile=self.key)
+
+                connect_kwargs['ssl'] = ssl_context
+
+            # Connect to relay
+            print('🔌 Connecting to relay...')
+            async with websockets.connect(self.relay_url, **connect_kwargs) as ws:
+                # Identify as client
+                await ws.send(
+                    json.dumps(
+                        {
+                            'type': 'connect_client',
+                            'mode': 'exec',
+                        }
+                    )
+                )
+                await ws.recv()
+
+                # Send command execution request
+                await ws.send(
+                    json.dumps(
+                        {
+                            'type': 'execute_command',
+                            'id': agent_id,
+                            'exec_id': exec_id,
+                            'command': command,
+                            'client_cn': self.client_cn,
+                        }
+                    )
+                )
+
+                # Wait for exec_started confirmation
+                resp = await ws.recv()
+                resp_data = json.loads(resp)
+
+                if resp_data.get('type') == 'exec_error':
+                    print(f'❌ Error: {resp_data.get("error")}')
+                    return 1
+
+                if resp_data.get('type') != 'exec_started':
+                    print(f'❌ Unexpected response: {resp_data}')
+                    return 1
+
+                print('✅ Execution started')
+                print('-' * 70)
+
+                # Stream output
+                exit_code = None
+                try:
+                    async for message_raw in ws:
+                        message = json.loads(message_raw)
+                        msg_type = message.get('type')
+
+                        if msg_type == 'exec_output':
+                            # Display output in real-time
+                            data = message.get('data', '')
+                            # Print without adding extra newlines (data already contains them)
+                            print(data, end='', flush=True)
+
+                        elif msg_type == 'exec_complete':
+                            exit_code = message.get('exit_code', 0)
+                            break
+
+                        elif msg_type == 'exec_error':
+                            print(f'❌ Execution error: {message.get("error")}')
+                            return 1
+
+                except websockets.ConnectionClosed:
+                    print('❌ Connection closed unexpectedly')
+                    return 1
+
+                print('-' * 70)
+                if exit_code is not None:
+                    if exit_code == 0:
+                        print(f'✅ Command completed successfully (exit code: {exit_code})')
+                    else:
+                        print(f'⚠️  Command failed (exit code: {exit_code})')
+                    print('=' * 70)
+                    return exit_code
+                else:
+                    print('❌ No exit code received')
+                    return 1
+
+        except Exception as e:
+            print(f'❌ Error: {e}')
+            import traceback
+
+            traceback.print_exc()
+            return 1
+
     async def connect(self, extra_command: Optional[List[str]] = None) -> int:
         """Complete flow: select agent, open tunnel, connect client, close tunnel."""
         print('=' * 70)
@@ -685,7 +816,8 @@ async def main_async() -> int:
         epilog="""
 Examples:
   %(prog)s -t ssh -a 4 -m https://<FQDN> root  # SSH to agent
-  %(prog)s -t ssh -a 4 -m https://<FQDN> root -c "ls -la"  # Execute remote command
+  %(prog)s -t ssh -a 4 -m https://<FQDN> root -c "ls -la"  # Execute remote command via SSH
+  %(prog)s -t exec -a 4 -m https://<FQDN> -e "migasfree sync"  # Execute command directly
   %(prog)s -t vnc -a 4 -m https://<FQDN>  # Connect VNC
   %(prog)s -t rdp -a 4 -m https://<FQDN> tux  # Connect RDP
         """,
@@ -696,8 +828,8 @@ Examples:
         '-t',
         '--type',
         default='ssh',
-        choices=['ssh', 'vnc', 'rdp'],
-        help='Service type (ssh, vnc, rdp)',
+        choices=['ssh', 'vnc', 'rdp', 'exec'],
+        help='Service type (ssh, vnc, rdp, exec)',
     )
     parser.add_argument('-a', '--agent', help='Agent ID (CID)')
     parser.add_argument('-m', '--manager', default=f'https://{FQDN}', help='Manager API URL')
@@ -709,11 +841,15 @@ Examples:
         help='Local port for tunnel (0 = automatic)',
     )
     parser.add_argument('-c', '--command', help='Command to execute remotely (SSH only)')
+    parser.add_argument('-e', '--exec-command', help='Command to execute remotely (exec mode)')
 
     args = parser.parse_args()
 
     if args.type == 'ssh' and not args.user:
         parser.error('User required for SSH')
+
+    if args.type == 'exec' and not args.exec_command:
+        parser.error('Exec command required for exec mode (use -e)')
 
     extra_command = [args.command] if args.command else None
 
@@ -730,6 +866,10 @@ Examples:
         msg_key=msg_key,
         msg_ca=msg_ca,
     )
+
+    # Handle exec mode differently
+    if args.type == 'exec':
+        return await tunnel.execute_remote_command(args.exec_command)
 
     return await tunnel.connect(extra_command)
 
