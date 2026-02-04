@@ -17,9 +17,14 @@ sed -i "s/^Version: .*/Version: $VERSION/" $DEB_DIR/DEBIAN/control
 
 # --- BUILD DEB ---
 echo "--- Building DEB Package ---"
-# Copy files to structure
+# Create directories
 mkdir -p $DEB_DIR/usr/bin
+mkdir -p $DEB_DIR/usr/lib/python3/dist-packages/migasfree_connect
+
+# Copy wrapper and package
 cp connect/migasfree-connect $DEB_DIR/usr/bin/migasfree-connect
+cp -r migasfree_connect/* $DEB_DIR/usr/lib/python3/dist-packages/migasfree_connect/
+
 chmod 755 $DEB_DIR/usr/bin/migasfree-connect
 
 # Build
@@ -35,7 +40,7 @@ if command -v rpmbuild >/dev/null 2>&1; then
     # Create source tarball
     TAR_DIR="migasfree-connect-$VERSION"
     mkdir -p /tmp/$TAR_DIR
-    cp connect/migasfree-connect /tmp/$TAR_DIR/
+    cp -r connect migasfree_connect pyproject.toml /tmp/$TAR_DIR/
     tar czf $RPM_DIR/SOURCES/migasfree-connect-$VERSION.tar.gz -C /tmp $TAR_DIR
     rm -rf /tmp/$TAR_DIR
     

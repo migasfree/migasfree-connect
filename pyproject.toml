@@ -56,7 +56,7 @@ Documentation = "https://github.com/migasfree/fun-with-migasfree"
 Issues = "https://github.com/migasfree/migasfree-connect/issues"
 
 [project.scripts]
-migasfree-connect = "migasfree_connect.connect:main"
+migasfree-connect = "migasfree_connect.cli:main"
 
 [tool.setuptools]
 packages = ["migasfree_connect"]

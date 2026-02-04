@@ -27,8 +27,10 @@ graph LR
 ## Features
 
 - **Multi-protocol Support**: SSH, VNC, and RDP connections
-- **Secure**: mTLS authentication with client certificates
+- **Remote Execution**: Direct command execution via WebSocket (without SSH)
+- **Secure**: Hardened mTLS authentication with client certificates
 - **WebSocket Tunneling**: Traverses firewalls and proxies
+- **Modular Architecture**: Clean separation of concerns for easy extension
 - **Cross-Platform**: Linux and Windows support
 - **Auto-discovery**: Lists available agents from the Manager
 
@@ -147,16 +149,51 @@ migasfree-connect -t vnc -a CID-4 -m https://<FQDN>
 migasfree-connect -t rdp -a CID-4 -m https://<FQDN> tux
 ```
 
+**Direct Remote Command Execution (Low Latency):**
+
+```bash
+migasfree-connect -t exec -e "uptime" -a CID-4 -m https://<FQDN>
+```
+
 ### Options
 
-| Option          | Description                                      |
-| --------------- | ------------------------------------------------ |
-| `user`          | Remote username (required for SSH/RDP)           |
-| `-t, --type`    | Service type: `ssh`, `vnc`, `rdp` (default: ssh) |
-| `-a, --agent`   | Connect to a specific agent by ID                |
-| `-m, --manager` | Migasfree Manager URL                            |
-| `-p, --port`    | Local port to bind the tunnel (0 = automatic)    |
-| `-c, --command` | Command to execute remotely (SSH only)           |
+| Option              | Description                                        |
+| ------------------- | -------------------------------------------------- |
+| `user`              | Remote username (required for SSH/RDP)             |
+| `-t, --type`        | Service type: `ssh`, `vnc`, `rdp`, `exec`          |
+| `-a, --agent`       | Connect to a specific agent by ID                  |
+| `-m, --manager`     | Migasfree Manager URL                              |
+| `-p, --port`        | Local port to bind the tunnel (0 = automatic)      |
+| `-c, --command`     | Command to execute remotely (SSH type only)        |
+| `-e, --exec-command`| Command to execute remotely (Direct exec type)     |
+
+## Architecture
+
+Migasfree Connect has been refactored into a modular Python package for better maintainability and security.
+
+- **`migasfree_connect.auth`**: mTLS credential handling.
+- **`migasfree_connect.manager`**: Manager API client.
+- **`migasfree_connect.tunnel`**: WebSocket tunnel engine.
+- **`migasfree_connect.launcher`**: Client application launcher.
+
+See [Architecture Decision Records (ADR)](docs/adr/) for detailed historical decisions.
+
+## Development & Testing
+
+We ❤️ contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+### Running Tests
+
+```bash
+# Install dev dependencies
+pip install .[dev]
+
+# Run all tests
+pytest
+
+# Test coverage
+pytest --cov=migasfree_connect tests/
+```
 
 ## Build
 
