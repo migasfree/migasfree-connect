@@ -7,3 +7,5 @@ __pycache__/
 *.tar.gz
 *.noarch.rpm
 role_audit_report.md
+venv/
+.coverage
