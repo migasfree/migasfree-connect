@@ -1,5 +1,6 @@
 # Migasfree Connect
 
+<!-- markdownlint-disable MD033 -->
 <div align="center">
 
 ![Version](https://img.shields.io/badge/version-1.0.5-blue?style=for-the-badge&logo=none)
@@ -8,6 +9,7 @@
 ![License](https://img.shields.io/badge/license-GPLv3-green?style=for-the-badge&logo=open-source-initiative&logoColor=white)
 
 </div>
+<!-- markdownlint-enable MD033 -->
 
 Client for **migasfree remote tunnel sessions**. This tool allows you to connect to remote agents via SSH, VNC, or RDP through the Migasfree secure tunnel infrastructure.
 
