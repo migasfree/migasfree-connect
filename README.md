@@ -1,6 +1,26 @@
 # Migasfree Connect
 
-Client for migasfree remote tunnel sessions. This tool allows you to connect to remote agents via SSH, VNC, or RDP using the Migasfree tunnel infrastructure.
+<div align="center">
+
+![Version](https://img.shields.io/badge/version-1.0.0-blue?style=for-the-badge&logo=none)
+![Python](https://img.shields.io/badge/python-3.8%2B-blue?style=for-the-badge&logo=python&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-linux%20%7C%20win-lightgrey?style=for-the-badge&logo=linux)
+![License](https://img.shields.io/badge/license-GPLv3-green?style=for-the-badge&logo=open-source-initiative&logoColor=white)
+
+</div>
+
+Client for **migasfree remote tunnel sessions**. This tool allows you to connect to remote agents via SSH, VNC, or RDP through the Migasfree secure tunnel infrastructure.
+
+```mermaid
+graph LR
+    User([User]) -->|TCP| Client[migasfree-connect]
+    Client -->|WebSocket wss| Relay[Relay Server]
+    Relay -->|Reverse Tunnel| Agent[Remote Device]
+    Agent -->|Localhost| Service[SSH/VNC/RDP]
+    
+    style Client fill:#3b82f6,stroke:#333,color:white
+    style Relay fill:#10b981,stroke:#333,color:white
+```
 
 ## Features
 
@@ -38,7 +58,7 @@ sudo apt-get install -f  # To install dependencies
 sudo rpm -ivh migasfree-connect-*.rpm
 ```
 
-### Windows
+### Windows (Installation)
 
 #### Automatic Installation
 
@@ -60,9 +80,9 @@ This will:
 1. Install Python 3.8+ from [python.org](https://www.python.org/downloads/)
 2. Install dependencies:
 
-```cmd
-pip install requests websockets urllib3
-```
+   ```cmd
+   pip install requests websockets urllib3
+   ```
 
 3. Copy the script to a directory in your PATH
 
@@ -146,7 +166,7 @@ To build DEB and RPM packages:
 ./build.sh [VERSION]
 ```
 
-### Windows
+### Windows (Build)
 
 To build a Windows distribution package:
 
