@@ -6,3 +6,4 @@ __pycache__/
 .DS_Store
 *.tar.gz
 *.noarch.rpm
+role_audit_report.md
