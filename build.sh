@@ -21,23 +21,28 @@ sed -i "s/^Version: .*/Version: $VERSION/" $DEB_DIR/DEBIAN/control
 
 # --- BUILD DEB ---
 echo "--- Building DEB Package ---"
-# Create directories
-mkdir -p $DEB_DIR/usr/bin
-mkdir -p $DEB_DIR/usr/lib/python3/dist-packages/migasfree_connect
+if command -v dpkg-deb >/dev/null 2>&1
+then
+    # Create directories
+    mkdir -p $DEB_DIR/usr/bin
+    mkdir -p $DEB_DIR/usr/lib/python3/dist-packages/migasfree_connect
 
-# Generate entry point wrapper instead of the legacy script
-cat <<EOF > $DEB_DIR/usr/bin/migasfree-connect
+    # Generate entry point wrapper instead of the legacy script
+    cat <<EOF > $DEB_DIR/usr/bin/migasfree-connect
 #!/usr/bin/python3
 from migasfree_connect.cli import main
 if __name__ == "__main__":
     main()
 EOF
-cp -r migasfree_connect/* $DEB_DIR/usr/lib/python3/dist-packages/migasfree_connect/
+    cp -r migasfree_connect/* $DEB_DIR/usr/lib/python3/dist-packages/migasfree_connect/
 
-chmod 755 $DEB_DIR/usr/bin/migasfree-connect
+    chmod 755 $DEB_DIR/usr/bin/migasfree-connect
 
-# Build
-dpkg-deb --build $DEB_DIR $DIST_DIR
+    # Build
+    dpkg-deb --build $DEB_DIR $DIST_DIR
+else
+    echo "dpkg-deb not found. Skipping DEB build."
+fi
 
 # --- BUILD RPM ---
 echo "--- Building RPM Package ---"
