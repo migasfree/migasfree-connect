@@ -1,58 +1,150 @@
-
 import subprocess
 import sys
-from typing import List, Optional
+import time
+from abc import ABC, abstractmethod
+from typing import ClassVar, Dict, List, Optional, Type
 
-def execute_client(service: str, local_port: int, user: Optional[str] = None, extra_command: Optional[List[str]] = None) -> int:
-    """Executes the appropriate client according to the service and platform."""
-    is_windows = sys.platform == 'win32'
-    cmd = []
 
-    if service == 'ssh':
-        if not user:
+class BaseLauncher(ABC):
+    """Abstract base for all protocol launchers."""
+
+    def __init__(self, local_port: int, user: Optional[str] = None, extra_command: Optional[List[str]] = None) -> None:
+        self.local_port = local_port
+        self.user = user
+        self.extra_command = extra_command
+        self.is_windows = sys.platform == 'win32'
+
+    @abstractmethod
+    def build_command(self) -> Optional[List[str]]:
+        """Returns the command list to execute, or None if no command needed."""
+
+    @abstractmethod
+    def install_hint(self) -> str:
+        """Returns a help string for when the client binary is not found."""
+
+    def label(self) -> str:
+        return self.__class__.__name__.replace('Launcher', '').upper()
+
+
+class SshLauncher(BaseLauncher):
+    def build_command(self) -> Optional[List[str]]:
+        if not self.user:
             print('❌ User required for SSH')
-            return 1
-
+            return None
         cmd = [
-            'ssh', '-p', str(local_port),
-            '-o', 'StrictHostKeyChecking=no',
-            '-o', 'UserKnownHostsFile=/dev/null',
-            '-o', 'LogLevel=ERROR',
-            '-o', 'ServerAliveInterval=30',
-            '-o', 'ServerAliveCountMax=3',
-            '-o', 'TCPKeepAlive=yes',
-            '-o', 'NoHostAuthenticationForLocalhost=yes',
-            '-o', 'CheckHostIP=no',
-            f'{user}@127.0.0.1'
+            'ssh',
+            '-p',
+            str(self.local_port),
+            '-o',
+            'StrictHostKeyChecking=no',
+            '-o',
+            'UserKnownHostsFile=/dev/null',
+            '-o',
+            'LogLevel=ERROR',
+            '-o',
+            'ServerAliveInterval=30',
+            '-o',
+            'ServerAliveCountMax=3',
+            '-o',
+            'TCPKeepAlive=yes',
+            '-o',
+            'NoHostAuthenticationForLocalhost=yes',
+            '-o',
+            'CheckHostIP=no',
+            f'{self.user}@127.0.0.1',
         ]
-        if extra_command:
-            cmd.extend(extra_command)
+        if self.extra_command:
+            cmd.extend(self.extra_command)
         print('\n🚀 Connecting SSH...')
+        return cmd
 
-    elif service == 'vnc':
-        cmd = ['vncviewer', f'localhost:{local_port}']
+    def install_hint(self) -> str:
+        return '   👉 Install OpenSSH' if self.is_windows else '   👉 Install: sudo apt install openssh-client'
+
+
+class VncLauncher(BaseLauncher):
+    def build_command(self) -> Optional[List[str]]:
         print('\n🖥️  Connecting VNC...')
+        return ['vncviewer', f'localhost:{self.local_port}']
 
-    elif service == 'rdp':
-        if is_windows:
-            cmd = ['mstsc', f'/v:localhost:{local_port}']
-        else:
-            cmd = ['xfreerdp', f'/v:localhost:{local_port}', '/cert-ignore', '/clipboard', '/sound']
-            if user:
-                cmd.append(f'/u:{user}')
+    def install_hint(self) -> str:
+        return '   👉 Install a VNC viewer' if self.is_windows else '   👉 Install: sudo apt install xtightvncviewer'
+
+
+class RdpLauncher(BaseLauncher):
+    def build_command(self) -> Optional[List[str]]:
         print('\n🖥️  Connecting RDP...')
+        if self.is_windows:
+            return ['mstsc', f'/v:localhost:{self.local_port}']
+        cmd = ['xfreerdp', f'/v:localhost:{self.local_port}', '/cert-ignore', '/clipboard', '/sound']
+        if self.user:
+            cmd.append(f'/u:{self.user}')
+        return cmd
 
-    else:
-        print(f'⚠️  Service "{service}" has no predefined client')
-        print(f'   Tunnel available at localhost:{local_port}')
+    def install_hint(self) -> str:
+        return (
+            '   👉 mstsc.exe should be available' if self.is_windows else '   👉 Install: sudo apt install freerdp2-x11'
+        )
+
+
+class FallbackLauncher(BaseLauncher):
+    """Used when no specific launcher is registered for a service."""
+
+    def build_command(self) -> Optional[List[str]]:
+        print('⚠️  Service has no predefined client')
+        print(f'   Tunnel available at localhost:{self.local_port}')
         print('   Press Ctrl+C to close...')
         try:
-            import time
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            return 0
-        return 0
+            pass
+        return None
+
+    def install_hint(self) -> str:
+        return ''
+
+
+class LauncherFactory:
+    """Factory that registers and resolves protocol launchers."""
+
+    _registry: ClassVar[Dict[str, Type[BaseLauncher]]] = {
+        'ssh': SshLauncher,
+        'vnc': VncLauncher,
+        'rdp': RdpLauncher,
+    }
+
+    @classmethod
+    def register(cls, service: str, launcher_cls: Type[BaseLauncher]) -> None:
+        """Register a new protocol launcher."""
+        cls._registry[service] = launcher_cls
+
+    @classmethod
+    def resolve(
+        cls,
+        service: str,
+        local_port: int,
+        user: Optional[str] = None,
+        extra_command: Optional[List[str]] = None,
+    ) -> BaseLauncher:
+        """Return the appropriate launcher instance for the given service."""
+        launcher_cls = cls._registry.get(service, FallbackLauncher)
+        return launcher_cls(local_port, user, extra_command)
+
+
+def execute_client(
+    service: str,
+    local_port: int,
+    user: Optional[str] = None,
+    extra_command: Optional[List[str]] = None,
+) -> int:
+    """Executes the appropriate client according to the service and platform."""
+    launcher = LauncherFactory.resolve(service, local_port, user, extra_command)
+    cmd = launcher.build_command()
+
+    if cmd is None:
+        # FallbackLauncher or validation failure (e.g. SSH without user)
+        return 0 if service not in LauncherFactory._registry else 1
 
     print(f'   Command: {" ".join(cmd)}\n')
     print('=' * 70)
@@ -66,13 +158,5 @@ def execute_client(service: str, local_port: int, user: Optional[str] = None, ex
         return 1
     except FileNotFoundError:
         print(f'❌ Client {service.upper()} not found')
-        _print_install_help(service, is_windows)
+        print(launcher.install_hint())
         return 1
-
-def _print_install_help(service: str, is_windows: bool):
-    if service == 'ssh':
-        print('   👉 Install OpenSSH' if is_windows else '   👉 Install: sudo apt install openssh-client')
-    elif service == 'vnc':
-        print('   👉 Install a VNC viewer' if is_windows else '   👉 Install: sudo apt install xtightvncviewer')
-    elif service == 'rdp':
-        print('   👉 mstsc.exe should be available' if is_windows else '   👉 Install: sudo apt install freerdp2-x11')

@@ -49,10 +49,10 @@ then
 
     # Create source tarball
     TAR_DIR="migasfree-connect-$VERSION"
-    mkdir -p /tmp/$TAR_DIR
-    cp -r migasfree_connect pyproject.toml /tmp/$TAR_DIR/
-    tar czf $RPM_DIR/SOURCES/migasfree-connect-$VERSION.tar.gz -C /tmp $TAR_DIR
-    rm -rf /tmp/$TAR_DIR
+    mkdir -p "/tmp/$TAR_DIR"
+    cp -r migasfree_connect pyproject.toml "/tmp/$TAR_DIR/"
+    tar czf "$RPM_DIR/SOURCES/migasfree-connect-$VERSION.tar.gz" -C /tmp "$TAR_DIR"
+    rm -rf "/tmp/$TAR_DIR"
     
     # Build
     rpmbuild --define "_topdir $PROJECT_ROOT/$RPM_DIR" --define "version $VERSION" -bb $RPM_DIR/SPECS/migasfree-connect.spec
