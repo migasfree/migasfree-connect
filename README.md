@@ -3,7 +3,7 @@
 <!-- markdownlint-disable MD033 -->
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.5-blue?style=for-the-badge&logo=none)
+![Version](https://img.shields.io/badge/version-1.0.6-blue?style=for-the-badge&logo=none)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue?style=for-the-badge&logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-linux%20%7C%20win-lightgrey?style=for-the-badge&logo=linux)
 ![License](https://img.shields.io/badge/license-GPLv3-green?style=for-the-badge&logo=open-source-initiative&logoColor=white)
@@ -40,7 +40,7 @@ graph LR
 - `websockets`
 - `requests`
 - `urllib3`
-- `openssl` (for certificate extraction)
+- `cryptography` (for native certificate extraction)
 - **Optional**: `migasfree-client` (for automatic server configuration)
 - **Clients**:
   - SSH: `openssh-client`
@@ -174,7 +174,7 @@ Migasfree Connect has been refactored into a modular Python package for better m
 - **`migasfree_connect.auth`**: mTLS credential handling.
 - **`migasfree_connect.manager`**: Manager API client.
 - **`migasfree_connect.tunnel`**: WebSocket tunnel engine.
-- **`migasfree_connect.launcher`**: Client application launcher.
+- **`migasfree_connect.launcher`**: Client application launcher (Factory Pattern for multi-protocol support).
 
 See [Architecture Decision Records (ADR)](docs/adr/) for detailed historical decisions.
 
