@@ -1,10 +1,12 @@
-
 import getpass
 import sys
-import subprocess
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 from urllib.parse import urlparse
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.serialization.pkcs12 import load_pkcs12
+
 
 def check_credentials(
     manager_url: str,
@@ -45,19 +47,36 @@ def check_credentials(
 
     print('⚙️ Extracting certificates...')
 
-    cmd_cert = ['openssl', 'pkcs12', '-in', str(p12_file), '-clcerts', '-nokeys', '-out', str(cert_file), '-passin', 'stdin']
-    cmd_key = ['openssl', 'pkcs12', '-in', str(p12_file), '-nocerts', '-out', str(key_file), '-nodes', '-passin', 'stdin']
-    cmd_ca = ['openssl', 'pkcs12', '-in', str(p12_file), '-cacerts', '-nokeys', '-out', str(ca_file), '-passin', 'stdin']
-
     try:
-        subprocess.run(cmd_cert, input=password, text=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        subprocess.run(cmd_key, input=password, text=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        subprocess.run(cmd_ca, input=password, text=True, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p12_data = p12_file.read_bytes()
+        p12 = load_pkcs12(p12_data, password.encode())
+
+        # Extract client certificate
+        if p12.cert:
+            cert_pem = p12.cert.certificate.public_bytes(serialization.Encoding.PEM)
+            cert_file.write_bytes(cert_pem)
+
+        # Extract private key
+        if p12.key:
+            key_pem = p12.key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+            key_file.write_bytes(key_pem)
+
+        # Extract CA certificates (optional)
+        if p12.additional_certs:
+            ca_pem = b''.join(
+                c.certificate.public_bytes(serialization.Encoding.PEM)
+                for c in p12.additional_certs
+            )
+            ca_file.write_bytes(ca_pem)
 
         print(f'✅ Credentials extracted to {cert_dir}')
         ca_result = str(ca_file) if ca_file.exists() and ca_file.stat().st_size > 0 else None
         return str(cert_file), str(key_file), ca_result
 
-    except subprocess.CalledProcessError as e:
-        print(f'❌ Error extracting certificates. Wrong password?\n{e}')
+    except (ValueError, TypeError) as e:
+        print(f'❌ Error extracting certificates. Wrong password or invalid P12 file?\n{e}')
         sys.exit(1)

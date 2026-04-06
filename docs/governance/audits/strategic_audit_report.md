@@ -22,10 +22,10 @@
 
 | Category | Rating | Status | Rationale |
 | :--- | :---: | :--- | :--- |
-| **Core Architecture** | 🟢 | **Stable** | Modular package structure with clear boundaries. |
+| **Core Architecture** | 🟢 | **Stable** | Modular package structure. Refactored launcher (Factory Pattern). |
 | **Security Hardening** | 🟢 | **Hardened** | mTLS enforcement and secure sensitive data handling. |
-| **Quality Infrastructure** | 🟡 | **Transition** | High global coverage but critical gaps in UI/CLI entry. |
-| **DevOps / Logistics** | 🟢 | **Automated** | Native packaging for Linux and Windows integrated. |
+| **Quality Infrastructure** | 🟢 | **Hardened** | Global coverage increased to 86% (Launcher: 95%). |
+| **DevOps / Logistics** | 🟢 | **Automated** | Version automatically read from pyproject.toml in build scripts. |
 
 ### 🛠️ Technology Ecosystem Dashboard
 
@@ -67,10 +67,10 @@ graph TD
 
 #### 2.1.2 Lead Architect Concerns
 
-| ID | Severidad | Hallazgo (Crítica) | Contraargumentación (Defensa) | Recomendación Final |
+| ID | Severity | Finding (Critique) | Counter-argument (Defense) | Final Recommendation |
 | :--- | :-------: | :------ | :-------: | :------------- |
-| ARCH-001 | 🟢 Baja | Existencia de un wrapper legacy redundante en `connect/`. | `[Virtual Adversary]`: Mantiene retrocompatibilidad con scripts de usuario existentes. | **DEPRECADO**. Se ha añadido advertencia formal en v1.0.5 para eliminación en v1.1.0. |
-| ARCH-002 | 🟡 Media | Falta de abstracción en `launcher.py` para nuevos protocolos. | `[Virtual Adversary]`: Los protocolos actuales (SSH, VNC, RDP) son estables y finitos. | Refactorizar hacia un Factory Pattern en `launcher.py` para facilitar extensiones futuras. |
+| ARCH-001 | 🟢 Low | Existence of a redundant legacy wrapper in `connect/`. | `[Virtual Adversary]`: Maintains backward compatibility with existing user scripts. | **REMOVED**. The `connect/` directory was deleted and packaging scripts updated. |
+| ARCH-002 | 🟢 Low | Lack of abstraction in `launcher.py` for new protocols. | `[Virtual Adversary]`: Current protocols (SSH, VNC, RDP) are stable and finite. | **RESOLVED**. Refactored to Factory Pattern to facilitate extensions without modifying the Core. |
 
 #### Code Examples: Modular Entry point
 
@@ -94,20 +94,20 @@ def main() -> None:
 
 #### 2.2.2 Security Concerns
 
-| ID | Severidad | Hallazgo (Crítica) | Contraargumentación (Defensa) | Recomendación Final |
+| ID | Severity | Finding (Critique) | Counter-argument (Defense) | Final Recommendation |
 | :--- | :-------: | :------ | :-------: | :------------- |
-| SEC-001 | 🟡 Media | Dependencia de binario externo `openssl` para manejo de P12. | `[Virtual Adversary]`: `openssl` está ubiquitamente presente en sistemas Linux/Windows del ecosistema. | Evaluar el uso de `cryptography` library para manejo nativo sin dependencia de binarios externos. |
+| SEC-001 | 🟢 Low | Dependency on external `openssl` binary for P12 handling. | `[Virtual Adversary]`: `openssl` is ubiquitously present in Linux/Windows systems in the ecosystem. | **RESOLVED**. Migration completed to Python `cryptography` library for native extraction. |
 
-#### Code Examples: Secure Stdin Pipe
+#### Code Examples: Native Python Extraction
 
 ```python
 # migasfree_connect/auth.py
-process = subprocess.run(
-    ["openssl", "pkcs12", "-in", p12_path, "-out", out_path, "-nodes"],
-    input=password.encode(),  # Securely passed via pipe
-    capture_output=True,
-    check=True
-)
+p12_data = p12_file.read_bytes()
+p12 = load_pkcs12(p12_data, password.encode())
+
+if p12.cert:
+    cert_pem = p12.cert.certificate.public_bytes(serialization.Encoding.PEM)
+    cert_file.write_bytes(cert_pem)
 ```
 
 ### 2.3 [SKILL] QA & Testing Audit
@@ -116,22 +116,24 @@ process = subprocess.run(
 
 | Finding | Location | Assessment |
 | :------ | :------: | :--------- |
-| **Coverage**: The project has achieved a 82% global test coverage. | `tests/` | EXCELLENT |
+| **Coverage**: The project has achieved a 86% global test coverage (Launcher: 95%). | `tests/` | EXCELLENT |
 | **Mocking Strategy**: Robust use of `unittest.mock` to simulate WebSocket and mTLS responses. | `tests/test_tunnel.py` | SOLID |
 
 #### 2.3.2 QA Concerns
 
-| ID | Severidad | Hallazgo (Crítica) | Contraargumentación (Defensa) | Recomendación Final |
+| ID | Severity | Finding (Critique) | Counter-argument (Defense) | Final Recommendation |
 | :--- | :-------: | :------ | :-------: | :------------- |
-| QA-001 | 🔴 Alta | Cobertura 0% en `__main__.py` y baja (70%) en `launcher.py`. | `[Virtual Adversary]`: `__main__.py` solo delega a `cli.py`. El launcher depende de binarios externos difíciles de mockear. | Implementar mocks para binarios de clientes (ssh, vncviewer) para testear lógica de lanzamiento. |
+| QA-001 | 🟢 Low | Insufficient coverage in entry points and `launcher.py`. | `[Virtual Adversary]`: The launcher depends on external binaries that are hard to mock. | **RESOLVED**. Implemented mocks for protocol clients and expanded the test suite. |
 
 #### Recommendations Summary
 
 ```mermaid
 graph TD
-    QA["QA: Coverage (P1)"] -->|Focus| MainEntry["__main__.py Test Coverage"]
-    QA -->|Improve| LauncherTests["Mock Protocol Launchers"]
-    ARCH["ARCH: Refactor (P2)"] -->|Action| LegacyCleanup["Deprecate connect/ wrapper"]
+    QA["QA: Coverage (P0)"] -->|Result| HighCoverage["86% Global Coverage"]
+    QA -->|Result| LauncherTests["95% Launcher Coverage"]
+    ARCH["ARCH: Refactor (P1)"] -->|Result| FactoryPattern["Factory Pattern Implemented"]
+    ARCH -->|Result| Cleanup["Legacy Wrapper Removed"]
+end
 ```
 
 ---
@@ -140,9 +142,10 @@ graph TD
 
 | Priority | Domain | Finding | Actionable Recommendation |
 | :--- | :--- | :--- | :--- |
-| **P0** | **QA** | **Critical Coverage Gap** | Implement missing tests for `__main__.py` and `launcher.py` logic. |
-| **P1** | **Security** | **Binary Reliance** | Investigate migration from `openssl` CLI to `cryptography` Python library. |
-| ✅ **DONE** | **Architecture** | **Legacy Debt** | Added deprecation warning to `connect/migasfree-connect` (ARCH-001). |
+| ✅ **DONE** | **QA** | **Critical Coverage Gap** | Unified test suite with 86% coverage and launcher mocks (QA-001). |
+| ✅ **DONE** | **Security** | **Binary Reliance** | Migrated from `openssl` CLI to native `cryptography` library (SEC-001). |
+| ✅ **DONE** | **Architecture** | **Legacy Debt** | Completely removed `connect/` and updated build pipelines (ARCH-001). |
+| ✅ **DONE** | **Architecture** | **Launcher Extensibility** | Refactored `launcher.py` to Factory Pattern (ARCH-002). |
 | **P3** | **DevOps** | **Packaging CI** | Add automated smoke tests for RPM/DEB/EXE installation to GitHub Actions. |
 
 ---
@@ -155,7 +158,7 @@ graph TD
 | :--- | :--- | :---: | :---: |
 | **Lines of Code** | `sloc` | ~450 | - |
 | **Cyclomatic Complexity** | `ruff` | Low | < 10 |
-| **Global Test Coverage** | `pytest-cov` | 82% | > 90% |
+| **Global Test Coverage** | `pytest-cov` | 86% | > 90% |
 | **Security Issues** | `internal scan` | 0 Critical | 0 |
 
 ### 🧩 Skill Ecosystem Status
@@ -164,8 +167,8 @@ graph TD
 | :--- | :--- | :--- |
 | **Pythonic Standards** | 🟢 | Full compliance with PEP8 and Async conventions. |
 | **Security Specialist** | 🟢 | Strong focus on mTLS and secure communication. |
-| **QA / Testing** | 🟡 | High coverage but needs tactical expansion to UI/CLI. |
-| **Bash / DevOps** | 🟢 | Packaging scripts are robust and multiarch. |
+| **QA / Testing** | 🟢 | Solid coverage and efficient mock-based test suite. |
+| **Bash / DevOps** | 🟢 | Robust packaging scripts aligned with pyproject.toml. |
 
 ### Appendices
 
