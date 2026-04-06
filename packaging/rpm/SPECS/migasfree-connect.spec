@@ -7,6 +7,8 @@ License:        GPLv3
 URL:            https://github.com/migasfree/migasfree-connect
 Source0:        %{name}-%{version}.tar.gz
 
+%{!?python3_sitelib: %global python3_sitelib %(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")}
+
 BuildArch:      noarch
 Requires:       python3
 Requires:       python3-websockets
