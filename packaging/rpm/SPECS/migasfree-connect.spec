@@ -26,9 +26,16 @@ Client script for establishing remote sessions (SSH, VNC, RDP) via migasfree tun
 
 %install
 rm -rf $RPM_BUILD_ROOT
+# Generate entry point wrapper instead of installing legacy script
 install -d $RPM_BUILD_ROOT%{_bindir}
 install -d $RPM_BUILD_ROOT%{python3_sitelib}/migasfree_connect
-install -m 0755 connect/migasfree-connect $RPM_BUILD_ROOT%{_bindir}/%{name}
+cat <<EOF > $RPM_BUILD_ROOT%{_bindir}/%{name}
+#!/usr/bin/python3
+from migasfree_connect.cli import main
+if __name__ == "__main__":
+    main()
+EOF
+chmod 0755 $RPM_BUILD_ROOT%{_bindir}/%{name}
 cp -r migasfree_connect/* $RPM_BUILD_ROOT%{python3_sitelib}/migasfree_connect/
 
 %files

@@ -5,8 +5,17 @@ REM Creates a distributable package
 setlocal EnableDelayedExpansion
 
 set "PROJECT_ROOT=%~dp0"
-set "VERSION=%~1"
-if "%VERSION%"=="" set "VERSION=1.0.0"
+
+REM Use version from argument, or fall back to pyproject.toml
+if not "%~1"=="" (
+    set "VERSION=%~1"
+) else (
+    for /f "tokens=*" %%i in ('powershell -Command "(Get-Content pyproject.toml | Select-String -Pattern '^version').ToString().Split('"')[1]"') do set "VERSION=%%i"
+    if "!VERSION!"=="" (
+        echo ERROR: Could not read version from pyproject.toml
+        exit /b 1
+    )
+)
 
 set "WIN_DIR=packaging\windows"
 set "DIST_DIR=dist"
@@ -25,10 +34,15 @@ set "BUILD_DIR=%DIST_DIR%\migasfree-connect-%VERSION%"
 if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
 mkdir "%BUILD_DIR%"
 
-echo [1/4] Copying connect script...
-copy /Y "connect\migasfree-connect" "%BUILD_DIR%\migasfree-connect" >nul
+echo [1/4] Generating entry point script...
+(
+    echo #!/usr/bin/python3
+    echo from migasfree_connect.cli import main
+    echo if __name__ == "__main__":
+    echo     main^(^)
+) > "%BUILD_DIR%\migasfree-connect"
 if %errorlevel% neq 0 (
-    echo ERROR: Failed to copy script.
+    echo ERROR: Failed to generate entry point script.
     exit /b 1
 )
 

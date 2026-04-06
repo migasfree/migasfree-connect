@@ -2,9 +2,13 @@
 set -e
 
 PROJECT_ROOT=$(pwd)
-VERSION=${1:-"1.0.0"}
-# Strip 'v' prefix if present (e.g. v1.0.0 -> 1.0.0)
-VERSION=${VERSION#v}
+# Use version from argument, or fall back to pyproject.toml
+if [ -n "$1" ]
+then
+    VERSION=${1#v}
+else
+    VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+fi
 DEB_DIR="packaging/deb"
 RPM_DIR="packaging/rpm"
 DIST_DIR="dist"
@@ -21,8 +25,13 @@ echo "--- Building DEB Package ---"
 mkdir -p $DEB_DIR/usr/bin
 mkdir -p $DEB_DIR/usr/lib/python3/dist-packages/migasfree_connect
 
-# Copy wrapper and package
-cp connect/migasfree-connect $DEB_DIR/usr/bin/migasfree-connect
+# Generate entry point wrapper instead of the legacy script
+cat <<EOF > $DEB_DIR/usr/bin/migasfree-connect
+#!/usr/bin/python3
+from migasfree_connect.cli import main
+if __name__ == "__main__":
+    main()
+EOF
 cp -r migasfree_connect/* $DEB_DIR/usr/lib/python3/dist-packages/migasfree_connect/
 
 chmod 755 $DEB_DIR/usr/bin/migasfree-connect
@@ -33,14 +42,15 @@ dpkg-deb --build $DEB_DIR $DIST_DIR
 # --- BUILD RPM ---
 echo "--- Building RPM Package ---"
 # Check if rpmbuild exists
-if command -v rpmbuild >/dev/null 2>&1; then
+if command -v rpmbuild >/dev/null 2>&1
+then
     # Create structure
     mkdir -p $RPM_DIR/{SOURCES,BUILD,RPMS,SRPMS}
 
     # Create source tarball
     TAR_DIR="migasfree-connect-$VERSION"
     mkdir -p /tmp/$TAR_DIR
-    cp -r connect migasfree_connect pyproject.toml /tmp/$TAR_DIR/
+    cp -r migasfree_connect pyproject.toml /tmp/$TAR_DIR/
     tar czf $RPM_DIR/SOURCES/migasfree-connect-$VERSION.tar.gz -C /tmp $TAR_DIR
     rm -rf /tmp/$TAR_DIR
     
