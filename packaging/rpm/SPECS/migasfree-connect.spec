@@ -13,6 +13,7 @@ BuildArch:      noarch
 Requires:       python3
 Requires:       python3-websockets
 Requires:       python3-requests
+Requires:       python3-cryptography
 # Test dependencies
 #Requires:       python3-pytest
 #Requires:       python3-pytest-asyncio
