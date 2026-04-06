@@ -9,13 +9,17 @@ set "PROJECT_ROOT=%~dp0"
 REM Use version from argument, or fall back to pyproject.toml
 if not "%~1"=="" (
     set "VERSION=%~1"
-) else (
-    for /f "tokens=*" %%i in ('powershell -Command "(Get-Content pyproject.toml | Select-String -Pattern '^version').ToString().Split('"')[1]"') do set "VERSION=%%i"
-    if "!VERSION!"=="" (
-        echo ERROR: Could not read version from pyproject.toml
-        exit /b 1
-    )
+    goto version_set
 )
+
+for /f "usebackq tokens=*" %%i in (`powershell -NoProfile -Command "(Get-Content pyproject.toml | Select-String '^version').ToString().Split([char]34)[1]"`) do set "VERSION=%%i"
+
+if "%VERSION%"=="" (
+    echo ERROR: Could not read version from pyproject.toml
+    exit /b 1
+)
+
+:version_set
 
 set "WIN_DIR=packaging\windows"
 set "DIST_DIR=dist"
