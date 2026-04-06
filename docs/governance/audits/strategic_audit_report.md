@@ -146,7 +146,7 @@ end
 | ✅ **DONE** | **Security** | **Binary Reliance** | Migrated from `openssl` CLI to native `cryptography` library (SEC-001). |
 | ✅ **DONE** | **Architecture** | **Legacy Debt** | Completely removed `connect/` and updated build pipelines (ARCH-001). |
 | ✅ **DONE** | **Architecture** | **Launcher Extensibility** | Refactored `launcher.py` to Factory Pattern (ARCH-002). |
-| **P3** | **DevOps** | **Packaging CI** | Add automated smoke tests for RPM/DEB/EXE installation to GitHub Actions. |
+| ✅ **DONE** | **DevOps** | **Packaging CI** | Added automated smoke tests for RPM/DEB/ZIP installation to GitHub Actions. |
 
 ---
 
