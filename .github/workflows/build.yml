@@ -138,6 +138,6 @@ jobs:
       - name: Test Windows Extension (ZIP)
         run: |
           Expand-Archive -Path (Get-ChildItem -Path dist/*.zip).FullName -DestinationPath test-install
-          cd test-install/*
+          cd test-install
           python -m pip install cryptography requests websockets urllib3
           python migasfree-connect --help
