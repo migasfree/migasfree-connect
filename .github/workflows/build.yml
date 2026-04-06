@@ -2,85 +2,102 @@ name: CI / Build
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [master, main]
     tags:
-      - '*'
+      - "*"
   pull_request:
-    branches: [ master, main ]
+    branches: [master, main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install .[dev]
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
 
-    - name: Run tests
-      run: |
-        pytest --cov=migasfree_connect tests/
+      - name: Run tests
+        run: |
+          pytest --cov=migasfree_connect tests/
 
-  build-linux:
+  build-deb:
     needs: test
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: Install build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y rpm
+      - name: Build DEB Package
+        run: |
+          chmod +x build.sh
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "Building DEB version $VERSION"
+          ./build.sh $VERSION
+          # build.sh currently attempts both, but rpmbuild will skip if rpmbuild is missing.
+          # We can also just ignore the RPM output here.
 
-    - name: Build Package
-      run: |
-        chmod +x build.sh
-        VERSION=${GITHUB_REF#refs/tags/}
-        echo "Building version $VERSION"
-        ./build.sh $VERSION
+      - name: Upload DEB Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-deb
+          path: dist/*.deb
 
-    - name: Upload Linux Artifacts
-      uses: actions/upload-artifact@v7
-      with:
-        name: packages-linux
-        path: |
-          dist/*.deb
-          dist/*.rpm
+  build-rpm:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install dependencies
+        run: dnf install -y rpm-build python3-devel git
+      - uses: actions/checkout@v6
+      - name: Build RPM Package
+        run: |
+          chmod +x build.sh
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "Building RPM version $VERSION"
+          ./build.sh $VERSION
+
+      - name: Upload RPM Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-rpm
+          path: dist/*.rpm
 
   build-windows:
     needs: test
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: Build Package
-      run: |
-        $VERSION = $env:GITHUB_REF.Replace('refs/tags/', '')
-        echo "Building version $VERSION"
-        .\build.bat $VERSION
+      - name: Build Package
+        run: |
+          $VERSION = $env:GITHUB_REF.Replace('refs/tags/', '')
+          echo "Building version $VERSION"
+          .\build.bat $VERSION
 
-    - name: Upload Windows Artifacts
-      uses: actions/upload-artifact@v7
-      with:
-        name: packages-windows
-        path: dist/*.zip
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-windows
+          path: dist/*.zip
 
   smoke-test-deb:
-    needs: build-linux
+    needs: build-deb
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v7
         with:
-          name: packages-linux
+          name: packages-deb
           path: dist/
       - name: Test DEB Installation
         run: |
@@ -93,13 +110,13 @@ jobs:
           migasfree-connect --help
 
   smoke-test-rpm:
-    needs: build-linux
+    needs: build-rpm
     runs-on: ubuntu-latest
     container: fedora:latest
     steps:
       - uses: actions/download-artifact@v7
         with:
-          name: packages-linux
+          name: packages-rpm
           path: dist/
       - name: Test RPM Installation
         run: |
@@ -117,7 +134,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: "3.11"
       - name: Test Windows Extension (ZIP)
         run: |
           Expand-Archive -Path (Get-ChildItem -Path dist/*.zip).FullName -DestinationPath test-install
