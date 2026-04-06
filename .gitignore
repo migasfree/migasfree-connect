@@ -9,3 +9,5 @@ __pycache__/
 role_audit_report.md
 venv/
 .coverage
+packaging/deb/usr/
+packaging/rpm/BUILD
